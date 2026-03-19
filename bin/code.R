@@ -612,45 +612,50 @@ top15_genera <- prokaryote.sylph %>%
   slice_head(n = 15) %>%
   pull(Genus)
 
-# All other genera (previously lumped as "Other")
-others_list <- setdiff(
-  prokaryote.sylph %>%
-    separate(clade_name, into = c("K","P","C","O","F","Genus","S","T"), sep = "\\|", fill = "right", remove = FALSE) %>%
-    filter(!is.na(Genus)) %>%
-    pull(Genus) %>% unique(),
-  top15_genera
-)
-
-# Summary composition of previously-lumped 'Other' genera by Status
-others_summary <- prokaryote.sylph %>%
+plot_data_other_raw <- prokaryote.sylph %>%
   filter(!sample %in% c("CAGE4481")) %>%
   separate(clade_name,
            into = c("Kingdom","Phylum","Class","Order","Family","Genus","Species","Strain"),
            sep = "\\|", fill = "right", remove = FALSE) %>%
-  filter(is.na(Species), is.na(Strain), !is.na(Genus), Genus %in% others_list) %>%
+  filter(is.na(Species), is.na(Strain), !is.na(Genus))
+
+# All other genera (previously lumped as "Other")
+others_list <- setdiff(
+  plot_data_other_raw %>% pull(Genus) %>% unique(),
+  top15_genera
+)
+
+# Data for previously-lumped 'Other' genera
+others_plot_data <- plot_data_other_raw %>%
+  filter(Genus %in% others_list) %>%
+  group_by(sample, Genus) %>%
+  summarise(Abundance = sum(Abundance, na.rm = TRUE), .groups = "drop") %>%
   left_join(metadata, by = c("sample" = "SampleID")) %>%
-  filter(!is.na(Status)) %>%
+  filter(!is.na(Status))
+
+# Shared palette for 'Other' genera plots
+n_others <- dplyr::n_distinct(others_plot_data$Genus)
+others_levels <- sort(unique(others_plot_data$Genus))
+if(length(shared_taxa_palette_curated) < n_others){
+  palette_others <- grDevices::colorRampPalette(shared_taxa_palette_curated)(n_others)
+} else {
+  palette_others <- shared_taxa_palette_curated[seq_len(n_others)]
+}
+palette_others <- stats::setNames(palette_others, others_levels)
+
+# Summary composition of previously-lumped 'Other' genera by Status
+others_summary <- others_plot_data %>%
   group_by(Status, Genus) %>%
   summarise(Abundance = sum(Abundance, na.rm = TRUE), .groups = "drop") %>%
   group_by(Status) %>%
   mutate(RelAb = Abundance / sum(Abundance, na.rm = TRUE)) %>%
   ungroup()
 
-# dynamic palette for others
-n_others <- dplyr::n_distinct(others_summary$Genus)
-palette_others_base <- c("#8dd3c7","#ffffb3","#bebada","#fb8072","#80b1d3","#fdb462",
-                         "#b3de69","#fccde5","#d9d9d9","#bc80bd","#ccebc5","#ffed6f")
-if(length(palette_others_base) < n_others){
-  palette_others <- grDevices::colorRampPalette(palette_others_base)(n_others)
-} else {
-  palette_others <- palette_others_base[1:n_others]
-}
-
 others_summary_plot <- ggplot(others_summary, aes(x = Status, y = RelAb, fill = Genus)) +
   geom_col(position = "stack", width = 0.6) +
   theme_classic(base_size = 12) +
   scale_y_continuous(labels = scales::percent_format(), expand = c(0,0)) +
-  scale_fill_manual(values = palette_others) +
+  scale_fill_manual(values = palette_others, breaks = others_levels, drop = FALSE) +
   labs(title = "Composition of Previously-Lumped 'Other' Genera by TB Status", x = "Status", y = "Relative Abundance") +
   guides(fill = guide_legend(ncol = 1, byrow = FALSE, keyheight = grid::unit(0.32, "cm"), keywidth = grid::unit(0.32, "cm"))) +
   theme(axis.text.x = element_text(face = "bold"),
@@ -661,21 +666,17 @@ others_summary_plot <- ggplot(others_summary, aes(x = Status, y = RelAb, fill = 
         legend.key.size = grid::unit(0.32, "cm"),
         legend.title = element_text(size = 8),
         legend.text = element_text(size = 6))
- 
-# Save summary with larger width so plot occupies ~half composite width
-#ggsave("7-others_genus_summary_by_status.tiff", plot = others_summary_plot, width = 9, height = 6, dpi = 600, device = "tiff", compression = "lzw")
+
+ggsave("7-others_genus_TB_composition.tiff",
+       plot = others_summary_plot,
+       width = 8,
+       height = 6,
+       dpi = 600,
+       device = "tiff",
+       compression = "lzw")
 
 # Sample-level composition for 'Other' genera (stacked bars showing relative abundance)
-others_sample <- prokaryote.sylph %>%
-  filter(!sample %in% c("CAGE4481")) %>%
-  separate(clade_name,
-           into = c("Kingdom","Phylum","Class","Order","Family","Genus","Species","Strain"),
-           sep = "\\|", fill = "right", remove = FALSE) %>%
-  filter(is.na(Species), is.na(Strain), !is.na(Genus), Genus %in% others_list) %>%
-  group_by(sample, Genus) %>%
-  summarise(Abundance = sum(Abundance, na.rm = TRUE), .groups = "drop") %>%
-  left_join(metadata, by = c("sample" = "SampleID")) %>%
-  filter(!is.na(Status)) %>%
+others_sample <- others_plot_data %>%
   group_by(Status, sample) %>%
   mutate(sample_tot = sum(Abundance, na.rm = TRUE)) %>%
   ungroup() %>%
@@ -687,7 +688,7 @@ p_others_sample <- ggplot(others_sample, aes(x = sample, y = Abundance, fill = G
   coord_flip() +
   theme_classic(base_size = 10) +
   scale_y_continuous(labels = scales::percent_format(), expand = c(0,0)) +
-  scale_fill_manual(values = palette_others) +
+  scale_fill_manual(values = palette_others, breaks = others_levels, drop = FALSE) +
   guides(fill = guide_legend(ncol = 1, byrow = FALSE, keyheight = grid::unit(0.28, "cm"), keywidth = grid::unit(0.28, "cm"))) +
   facet_wrap(~Status, scales = "free_y", ncol = 2) +
   theme(axis.text.y = element_text(size = 5), strip.text = element_text(face = "bold"),
@@ -700,8 +701,14 @@ p_others_sample <- ggplot(others_sample, aes(x = sample, y = Abundance, fill = G
     legend.text = element_text(size = 6)) +
   labs(title = "Sample-level Composition: Previously-Lumped 'Other' Genera", x = "Sample", y = "Relative Abundance")
 p_others_sample
-# Save sample-level others larger so it can be displayed as half the composite
-#ggsave("2-others_genus_samples.tiff", plot = p_others_sample, width = 12, height = 12, dpi = 600, device = "tiff", compression = "lzw")
+
+ggsave("8-others_genus_TB_composition_samples.tiff",
+       plot = p_others_sample,
+       width = 16,
+       height = 12,
+       dpi = 600,
+       device = "tiff",
+       compression = "lzw")
 
 # ------------------------------------------------------------------
 # Run per-genus Wilcoxon tests on the full (declassified) genus set,
@@ -709,12 +716,7 @@ p_others_sample
 # subset results to those genera in 'others_list'.
 # ------------------------------------------------------------------
 
-plot_data_full <- prokaryote.sylph %>%
-  filter(sample != "CAGE4481") %>%
-  separate(clade_name,
-           into = c("Kingdom","Phylum","Class","Order","Family","Genus","Species","Strain"),
-           sep = "\\|", fill = "right", remove = FALSE) %>%
-  filter(is.na(Species), is.na(Strain), !is.na(Genus)) %>%
+plot_data_full <- plot_data_other_raw %>%
   group_by(sample, Genus) %>%
   summarise(Abundance = sum(Abundance, na.rm = TRUE), .groups = "drop") %>%
   left_join(metadata, by = c("sample" = "SampleID")) %>%
@@ -783,6 +785,48 @@ if(nrow(sig_others) == 0){
 writeLines(interp_others, con = "genus_stats_others_report.txt")
 cat(interp_others, "\n")
 
+## Combine summary + sample-level 'Other' genus plots with statistical table and shared legend
+others_table_df <- genus_out_others %>%
+  dplyr::arrange(p.adj) %>%
+  dplyr::select(dplyr::any_of(c("Genus", "p", "p.adj", "p.adj.signif", "direction")))
+if(nrow(others_table_df) > 15) others_table_df <- others_table_df %>% head(15)
+
+others_table_gg <- gridExtra::tableGrob(
+  others_table_df,
+  rows = NULL,
+  theme = gridExtra::ttheme_default(
+    core = list(fg_params = list(fontsize = 7), bg_params = list(fill = "white")),
+    colhead = list(fg_params = list(fontsize = 8), bg_params = list(fill = "white"))
+  )
+)
+
+others_table_plot <- ggpubr::as_ggplot(others_table_gg)
+others_sum_with_legend <- others_summary_plot + theme(legend.position = "right", legend.title = element_text(size = 9))
+others_samples_noleg <- p_others_sample + theme(legend.position = "none")
+
+others_left_main <- cowplot::plot_grid(
+  others_sum_with_legend,
+  others_samples_noleg,
+  ncol = 2,
+  rel_widths = c(1, 1.4)
+)
+
+final_others_plot <- cowplot::plot_grid(
+  others_left_main,
+  others_table_plot,
+  ncol = 2,
+  rel_widths = c(0.70, 0.30),
+  align = "h"
+)
+
+cowplot::save_plot(
+  "9-others_genus_comparison_with_stats.tiff",
+  final_others_plot,
+  base_width = 18,
+  base_height = 12,
+  dpi = 600
+)
+
 ############# Alpha & Beta diversity (phyloseq) #############
 # Compute alpha diversity metrics from `carbom` and test by Status
 library(phyloseq)
@@ -837,6 +881,13 @@ p_observed_phy <- ggplot(alpha_df_phy, aes(x = Status, y = observed, fill = Stat
 
 alpha_panel_phy <- (p_shannon_phy | p_simpson_phy) / p_observed_phy
 alpha_panel_phy
+ggsave("10-alpha_diversity_TB_status.tiff",
+       plot = alpha_panel_phy,
+       width = 16,
+       height = 12,
+       dpi = 600,
+       device = "tiff",
+       compression = "lzw")
 
 # Beta diversity (Bray-Curtis) and PERMANOVA
 bray_dist_phy <- phyloseq::distance(carbom, method = "bray")
@@ -855,7 +906,6 @@ p_bray_phy <- phyloseq::plot_ordination(carbom, ord_bray_phy, color = "Status") 
   labs(title = "PCoA (Bray-Curtis)", caption = ifelse(is.na(permanova_p_phy), "", paste0("PERMANOVA p = ", signif(permanova_p_phy, 3))))
 
 p_bray_phy
-
 
 ### Abundance of MTB species between the two groups
 prokaryote.sylph %>% 
