@@ -1,0 +1,30 @@
+clade_name	../concat/170191_CAGE4073_METAG.1.fq.gz	../concat/170191_CAGE4091_METAG.1.fq.gz	../concat/170191_CAGE4133_METAG.1.fq.gz	../concat/170191_CAGE4161_METAG.1.fq.gz	../concat/170191_CAGE4185_METAG.1.fq.gz	../concat/170191_CAGE4251_METAG.1.fq.gz	../concat/170191_CAGE4267_METAG.1.fq.gz	../concat/170191_CAGE4290_METAG.1.fq.gz	../concat/170191_CAGE4414_METAG.1.fq.gz	../concat/170191_CAGE4448_METAG.1.fq.gz	../concat/170191_CAGE4488_METAG.1.fq.gz	../concat/170191_CAGE4591_METAG.1.fq.gz	../concat/170191_CAGE4601_METAG.1.fq.gz	../concat/170191_CAGE4613_METAG.1.fq.gz
+NO_TAXONOMY	0.0	2.9316	0.0	2.6848	0.0	0.0	0.0	0.0	0.0	0.0	70.5344	0.0	0.0	0.0
+NO_TAXONOMY|t__GCF_001661255.1_Wican1	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	70.5344	0.0	0.0	0.0
+NO_TAXONOMY|t__GCF_001661395.1_Hypbu1	0.0	0.0	0.0	2.6848	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0
+NO_TAXONOMY|t__GCF_002926085.2_CanDuoHae_v1.0	0.0	2.9316	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0
+d__Eukaryota	100.0	97.0684	100.0	97.31520000000002	100.0	100.0	100.0	100.0	100.0	100.0	29.4656	100.0	100.0	100.0
+d__Eukaryota|p__Ascomycota	100.0	97.0684	100.0	97.31520000000002	100.0	100.0	100.0	100.0	100.0	100.0	29.4656	100.0	100.0	100.0
+d__Eukaryota|p__Ascomycota|c__Saccharomycetes	100.0	97.0684	100.0	97.31520000000002	100.0	100.0	100.0	100.0	100.0	100.0	29.4656	100.0	100.0	100.0
+d__Eukaryota|p__Ascomycota|c__Saccharomycetes|o__Saccharomycetales	100.0	97.0684	100.0	97.31520000000002	100.0	100.0	100.0	100.0	100.0	100.0	29.4656	100.0	100.0	100.0
+d__Eukaryota|p__Ascomycota|c__Saccharomycetes|o__Saccharomycetales|f__Debaryomycetaceae	100.0	90.669	57.3123	97.31520000000002	100.0	100.0	100.0	100.0	100.0	100.0	0.0	100.0	100.0	100.0
+d__Eukaryota|p__Ascomycota|c__Saccharomycetes|o__Saccharomycetales|f__Debaryomycetaceae|g__Candida	100.0	90.669	0.0	97.31520000000002	100.0	100.0	100.0	100.0	100.0	0.0	0.0	54.409	0.0	0.0
+d__Eukaryota|p__Ascomycota|c__Saccharomycetes|o__Saccharomycetales|f__Debaryomycetaceae|g__Candida|s__Candida albicans	100.0	69.4317	0.0	0.0	100.0	0.0	100.0	100.0	0.0	0.0	0.0	54.409	0.0	0.0
+d__Eukaryota|p__Ascomycota|c__Saccharomycetes|o__Saccharomycetales|f__Debaryomycetaceae|g__Candida|s__Candida albicans|t__GCF_000182965.3	100.0	69.4317	0.0	0.0	100.0	0.0	100.0	100.0	0.0	0.0	0.0	54.409	0.0	0.0
+d__Eukaryota|p__Ascomycota|c__Saccharomycetes|o__Saccharomycetales|f__Debaryomycetaceae|g__Candida|s__Candida orthopsilosis	0.0	0.0	0.0	28.4933	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0
+d__Eukaryota|p__Ascomycota|c__Saccharomycetes|o__Saccharomycetales|f__Debaryomycetaceae|g__Candida|s__Candida orthopsilosis|t__GCF_000315875.1	0.0	0.0	0.0	28.4933	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0
+d__Eukaryota|p__Ascomycota|c__Saccharomycetes|o__Saccharomycetales|f__Debaryomycetaceae|g__Candida|s__Candida parapsilosis	0.0	19.1644	0.0	67.1235	0.0	100.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0
+d__Eukaryota|p__Ascomycota|c__Saccharomycetes|o__Saccharomycetales|f__Debaryomycetaceae|g__Candida|s__Candida parapsilosis|t__GCF_000182765.1	0.0	19.1644	0.0	67.1235	0.0	100.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0
+d__Eukaryota|p__Ascomycota|c__Saccharomycetes|o__Saccharomycetales|f__Debaryomycetaceae|g__Candida|s__Candida tropicalis	0.0	2.0729	0.0	1.6984	0.0	0.0	0.0	0.0	100.0	0.0	0.0	0.0	0.0	0.0
+d__Eukaryota|p__Ascomycota|c__Saccharomycetes|o__Saccharomycetales|f__Debaryomycetaceae|g__Candida|s__Candida tropicalis|t__GCF_000006335.3	0.0	2.0729	0.0	1.6984	0.0	0.0	0.0	0.0	100.0	0.0	0.0	0.0	0.0	0.0
+d__Eukaryota|p__Ascomycota|c__Saccharomycetes|o__Saccharomycetales|f__Debaryomycetaceae|g__Debaryomyces	0.0	0.0	57.3123	0.0	0.0	0.0	0.0	0.0	0.0	100.0	0.0	45.591	100.0	100.0
+d__Eukaryota|p__Ascomycota|c__Saccharomycetes|o__Saccharomycetales|f__Debaryomycetaceae|g__Debaryomyces|s__Debaryomyces hansenii	0.0	0.0	57.3123	0.0	0.0	0.0	0.0	0.0	0.0	100.0	0.0	45.591	100.0	100.0
+d__Eukaryota|p__Ascomycota|c__Saccharomycetes|o__Saccharomycetales|f__Debaryomycetaceae|g__Debaryomyces|s__Debaryomyces hansenii|t__GCF_000006445.2	0.0	0.0	57.3123	0.0	0.0	0.0	0.0	0.0	0.0	100.0	0.0	45.591	100.0	100.0
+d__Eukaryota|p__Ascomycota|c__Saccharomycetes|o__Saccharomycetales|f__Metschnikowiaceae	0.0	0.0	42.6877	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0
+d__Eukaryota|p__Ascomycota|c__Saccharomycetes|o__Saccharomycetales|f__Metschnikowiaceae|g__Clavispora	0.0	0.0	42.6877	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0
+d__Eukaryota|p__Ascomycota|c__Saccharomycetes|o__Saccharomycetales|f__Metschnikowiaceae|g__Clavispora|s__Clavispora lusitaniae	0.0	0.0	42.6877	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0
+d__Eukaryota|p__Ascomycota|c__Saccharomycetes|o__Saccharomycetales|f__Metschnikowiaceae|g__Clavispora|s__Clavispora lusitaniae|t__GCF_014636115.1	0.0	0.0	42.6877	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0
+d__Eukaryota|p__Ascomycota|c__Saccharomycetes|o__Saccharomycetales|f__Pichiaceae	0.0	6.3994	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	29.4656	0.0	0.0	0.0
+d__Eukaryota|p__Ascomycota|c__Saccharomycetes|o__Saccharomycetales|f__Pichiaceae|g__Pichia	0.0	6.3994	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	29.4656	0.0	0.0	0.0
+d__Eukaryota|p__Ascomycota|c__Saccharomycetes|o__Saccharomycetales|f__Pichiaceae|g__Pichia|s__Pichia kudriavzevii	0.0	6.3994	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	29.4656	0.0	0.0	0.0
+d__Eukaryota|p__Ascomycota|c__Saccharomycetes|o__Saccharomycetales|f__Pichiaceae|g__Pichia|s__Pichia kudriavzevii|t__GCF_003054445.1	0.0	6.3994	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	29.4656	0.0	0.0	0.0

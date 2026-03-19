@@ -1,0 +1,23 @@
+## Invoke already installed sylph environment packages
+mamba activate metagenomics
+
+## Convert sylph output to taxonomic info
+cd /mnt/d/#2025#/CAGE-PhD/data-analysis-plan/graphpad/OTUs
+mkdir -p downstream-analysis
+cp -rf sylph-utils/*.py downstream-analysis/ && cp -rf sylph-utils/fungi/* downstream-analysis/ && cp -rf sylph-utils/prokaryote/* downstream-analysis/ && cp -rf sylph/* downstream-analysis/
+mkdir -p downstream-analysis/{fungi,viruses,bacteria}
+
+### Conversions for fungi
+python downstream-analysis/sylph_to_taxprof.py -m downstream-analysis/fungi_refseq_2024-07-25_metadata.tsv.gz -s downstream-analysis/fungi-refseq_results_u.tsv -o downstream-analysis/fungi/fungi-
+
+### Conversions for bacteria
+python downstream-analysis/sylph_to_taxprof.py -m downstream-analysis/gtdb_r220_metadata.tsv.gz -s downstream-analysis/syldb_results_u.tsv -o downstream-analysis/bacteria/prokaryote-
+
+### Conversions for viruses
+python downstream-analysis/sylph_to_taxprof.py -m downstream-analysis/IMGVR_4.1_metadata.tsv.gz -s downstream-analysis/imgvr_results_u.tsv -o downstream-analysis/viruses/virus-
+
+### merging the outputs
+python downstream-analysis/merge_sylph_taxprof.py downstream-analysis/bacteria/*.sylphmpa --column relative_abundance -o prokaryote_table.tsv
+python downstream-analysis/merge_sylph_taxprof.py downstream-analysis/fungi/*.sylphmpa --column relative_abundance -o fungi_table.tsv
+python downstream-analysis/merge_sylph_taxprof.py downstream-analysis/viruses/*.sylphmpa --column relative_abundance -o virus_table.tsv
+

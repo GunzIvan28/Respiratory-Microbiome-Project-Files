@@ -1,5 +1,7 @@
 # Respiratory Microbiome Project
+
 This repository contains all the source code used to conduct the "Respiratory Microbiome Project (RM-TB)".
+
 ## RM-TB Sample selection criteria
 
 <img src="assets/sample-selection-criteria.png">
@@ -20,3 +22,7 @@ The diagram outlines the participant selection criteria for a study on tuberculo
    - 100 **GeneXpert− (RM-TB−).**  
 
 This process ensured a well-defined and controlled sample selection that can be replicated for microbiota analysis.
+
+## Downstream microbiome analysis
+
+Microbiome data analysis was performed using R. The main script is located in the `bin` directory. Prior to the R analysis, outputs from sylph were processed using custom scripts located in the `Scripts`  directory
