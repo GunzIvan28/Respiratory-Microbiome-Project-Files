@@ -219,6 +219,8 @@ shared_taxa_palette_curated <- c(
   "#ff7f00","#984ea3","#a65628","#f781bf","#4d4d4d"
 )
 
+#### Phylum-level graphics
+
 phylum_plot_data <- prokaryote.sylph %>% 
   filter(!sample %in% c("CAGE4481") & !grepl("t_GCA", sample)) %>%  
   separate(clade_name, 
@@ -405,6 +407,8 @@ cowplot::save_plot(
   dpi = 600
 )
 
+
+##### genus level graphics
 plot_data_raw <- prokaryote.sylph %>% 
   filter(sample != "CAGE4481") %>% 
   separate(clade_name, 
@@ -828,84 +832,388 @@ cowplot::save_plot(
 )
 
 ############# Alpha & Beta diversity (phyloseq) #############
-# Compute alpha diversity metrics from `carbom` and test by Status
+# Compute both genome-level and genus-level alpha diversity metrics from `carbom`
 library(phyloseq)
-alpha_df_phy <- phyloseq::estimate_richness(carbom, measures = c("Observed", "Shannon", "Simpson")) %>%
+carbom_genus <- tax_glom(carbom, taxrank = "Genus", NArm = FALSE)
+carbom_genus <- prune_taxa(taxa_sums(carbom_genus) > 0, carbom_genus)
+
+alpha_df_genome <- phyloseq::estimate_richness(carbom, measures = c("Observed", "Shannon", "Simpson")) %>%
   tibble::rownames_to_column(var = "SampleID") %>%
   left_join(as.data.frame(sample_data(carbom)) %>% tibble::rownames_to_column(var = "SampleID"), by = "SampleID") %>%
   dplyr::rename(observed = Observed, shannon = Shannon, simpson = Simpson) %>%
-  # Keep only Case and Control samples (drop NA or other categories)
   dplyr::filter(!is.na(Status) & Status %in% c("Case", "Control"))
 
-# statistical tests (Wilcoxon) and annotated boxplots
-alpha_long_phy <- alpha_df_phy %>%
-  dplyr::select(Status, shannon, simpson, observed) %>%
-  tidyr::pivot_longer(cols = c(shannon, simpson, observed), names_to = "metric", values_to = "value")
+alpha_df_genus <- phyloseq::estimate_richness(carbom_genus, measures = c("Observed", "Shannon", "Simpson")) %>%
+  tibble::rownames_to_column(var = "SampleID") %>%
+  left_join(as.data.frame(sample_data(carbom_genus)) %>% tibble::rownames_to_column(var = "SampleID"), by = "SampleID") %>%
+  dplyr::rename(observed = Observed, shannon = Shannon, simpson = Simpson) %>%
+  dplyr::filter(!is.na(Status) & Status %in% c("Case", "Control"))
 
-alpha_stats_phy <- alpha_long_phy %>%
-  group_by(metric) %>%
-  wilcox_test(value ~ Status) %>%
-  adjust_pvalue(method = "BH") %>%
-  add_significance()
+alpha_metrics <- c("shannon", "simpson", "observed")
+metric_labels <- c(
+  shannon = "Shannon Diversity",
+  simpson = "Simpson Diversity",
+  observed = "Observed Richness"
+)
 
-## Create boxplots and add visible p-value annotations only for Case vs Control
-# compute label positions so p-values fall above the boxes
-ymax_shannon <- tryCatch(max(alpha_df_phy$shannon, na.rm = TRUE), error = function(e) NA_real_)
-ymax_simpson <- tryCatch(max(alpha_df_phy$simpson, na.rm = TRUE), error = function(e) NA_real_)
-ymax_observed <- tryCatch(max(alpha_df_phy$observed, na.rm = TRUE), error = function(e) NA_real_)
+compute_alpha_stats <- function(alpha_df, level_label) {
+  alpha_long <- alpha_df %>%
+    dplyr::select(Status, dplyr::all_of(alpha_metrics)) %>%
+    tidyr::pivot_longer(cols = dplyr::all_of(alpha_metrics), names_to = "metric", values_to = "value")
 
-lab_shannon <- if(!is.na(ymax_shannon)) ymax_shannon * 1.08 else NULL
-lab_simpson <- if(!is.na(ymax_simpson)) ymax_simpson * 1.08 else NULL
-lab_observed <- if(!is.na(ymax_observed)) ymax_observed * 1.08 else NULL
+  alpha_stats <- alpha_long %>%
+    group_by(metric) %>%
+    wilcox_test(value ~ Status) %>%
+    adjust_pvalue(method = "BH") %>%
+    add_significance() %>%
+    ungroup() %>%
+    mutate(level = level_label)
 
-p_shannon_phy <- ggplot(alpha_df_phy, aes(x = Status, y = shannon, fill = Status)) +
-  geom_boxplot() +
-  stat_compare_means(method = "wilcox.test", label = "p.format", size = 4, label.y = lab_shannon) +
-  theme_classic() +
-  labs(x = "Group", y = "Shannon Diversity", title = "Alpha Diversity (Shannon)") +
-  theme(legend.position = "none")
+  sig_alpha <- alpha_stats %>%
+    filter(!is.na(p.adj) & p.adj < 0.05) %>%
+    arrange(p.adj)
 
-p_simpson_phy <- ggplot(alpha_df_phy, aes(x = Status, y = simpson, fill = Status)) +
-  geom_boxplot() +
-  stat_compare_means(method = "wilcox.test", label = "p.format", size = 4, label.y = lab_simpson) +
-  theme_classic() +
-  labs(x = "Group", y = "Simpson Diversity", title = "Alpha Diversity (Simpson)") +
-  theme(legend.position = "none")
+  if(nrow(sig_alpha) == 0){
+    alpha_interp <- paste0(
+      level_label,
+      "-level alpha diversity did not differ significantly between Case and Control samples after BH correction ",
+      "(Observed richness, Shannon, and Simpson all had adjusted p-values >= 0.05). ",
+      "These alpha-diversity statistics describe overall within-sample ",
+      tolower(level_label),
+      "-level diversity and do not identify a single genus driving the difference."
+    )
+  } else {
+    alpha_lines <- sig_alpha %>%
+      mutate(
+        metric_label = unname(metric_labels[metric]),
+        line = paste0(metric_label, ": p=", signif(p, 3), ", p.adj=", signif(p.adj, 3), ", significance=", p.adj.signif)
+      ) %>%
+      pull(line)
+    alpha_interp <- paste0(
+      level_label,
+      "-level alpha diversity differed between Case and Control samples for the following metric(s) after BH correction: ",
+      paste(alpha_lines, collapse = "; "),
+      ". These results indicate differences in overall within-sample ",
+      tolower(level_label),
+      "-level diversity, not that one specific genus is significantly enriched by alpha-diversity testing alone."
+    )
+  }
 
-p_observed_phy <- ggplot(alpha_df_phy, aes(x = Status, y = observed, fill = Status)) +
-  geom_boxplot() +
-  stat_compare_means(method = "wilcox.test", label = "p.format", size = 4, label.y = lab_observed) +
-  theme_classic() +
-  labs(x = "Group", y = "Observed richness", title = "Alpha Diversity (Observed)") +
-  theme(legend.position = "none")
+  list(stats = alpha_stats, interp = alpha_interp)
+}
 
-alpha_panel_phy <- (p_shannon_phy | p_simpson_phy) / p_observed_phy
-alpha_panel_phy
-ggsave("10-alpha_diversity_TB_status.tiff",
-       plot = alpha_panel_phy,
-       width = 16,
+make_alpha_plot <- function(alpha_df, metric, title_prefix) {
+  ymax_metric <- tryCatch(max(alpha_df[[metric]], na.rm = TRUE), error = function(e) NA_real_)
+  label_y <- if(!is.na(ymax_metric)) ymax_metric * 1.08 else NULL
+
+  ggplot(alpha_df, aes(x = Status, y = .data[[metric]], fill = Status)) +
+    geom_boxplot() +
+    stat_compare_means(method = "wilcox.test", label = "p.format", size = 4, label.y = label_y) +
+    theme_classic() +
+    labs(
+      x = "Group",
+      y = unname(metric_labels[[metric]]),
+      title = paste(title_prefix, "(", unname(metric_labels[[metric]]), ")", sep = "")
+    ) +
+    theme(legend.position = "none")
+}
+
+alpha_genome_res <- compute_alpha_stats(alpha_df_genome, "Genome")
+alpha_genus_res <- compute_alpha_stats(alpha_df_genus, "Genus")
+
+write.table(alpha_genus_res$stats, file = "10-alpha_diversity_genus_stats.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
+write.table(alpha_genome_res$stats, file = "10-supplementary-alpha_diversity_genome_stats.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
+
+alpha_main_interp <- paste(
+  "Main analysis:",
+  alpha_genus_res$interp,
+  "Supplementary analysis:",
+  alpha_genome_res$interp
+)
+writeLines(alpha_main_interp, con = "10-alpha_diversity_interpretation.txt")
+cat(alpha_main_interp, "\n")
+
+p_shannon_genus <- make_alpha_plot(alpha_df_genus, "shannon", "Genus-Level Alpha Diversity")
+p_simpson_genus <- make_alpha_plot(alpha_df_genus, "simpson", "Genus-Level Alpha Diversity")
+p_observed_genus <- make_alpha_plot(alpha_df_genus, "observed", "Genus-Level Alpha Diversity")
+
+p_shannon_genome <- make_alpha_plot(alpha_df_genome, "shannon", "Genome-Level Alpha Diversity")
+p_simpson_genome <- make_alpha_plot(alpha_df_genome, "simpson", "Genome-Level Alpha Diversity")
+p_observed_genome <- make_alpha_plot(alpha_df_genome, "observed", "Genome-Level Alpha Diversity")
+
+alpha_panel_main <- cowplot::plot_grid(
+  p_shannon_genus,
+  p_simpson_genus,
+  p_observed_genus,
+  p_shannon_genome,
+  p_simpson_genome,
+  p_observed_genome,
+  ncol = 3,
+  labels = c(
+    "Main: Genus Shannon", "Main: Genus Simpson", "Main: Genus Observed",
+    "Supplementary: Genome Shannon", "Supplementary: Genome Simpson", "Supplementary: Genome Observed"
+  )
+)
+
+ggsave("10-alpha_diversity_main_and_supplementary.tiff",
+       plot = alpha_panel_main,
+       width = 18,
        height = 12,
        dpi = 600,
        device = "tiff",
        compression = "lzw")
 
-# Beta diversity (Bray-Curtis) and PERMANOVA
-bray_dist_phy <- phyloseq::distance(carbom, method = "bray")
-meta_phy <- as.data.frame(sample_data(carbom))
-# Use meta_phy$Status directly to avoid formula/data type parsing issues
-permanova_phy <- adonis2(bray_dist_phy ~ meta_phy$Status, permutations = 999)
+alpha_panel_genus <- cowplot::plot_grid(p_shannon_genus, p_simpson_genus, p_observed_genus, ncol = 3)
+ggsave("10-alpha_diversity_genus_TB_status.tiff",
+       plot = alpha_panel_genus,
+       width = 18,
+       height = 6,
+       dpi = 600,
+       device = "tiff",
+       compression = "lzw")
 
-# extract p-value robustly
-permanova_p_phy <- tryCatch({
-  as.numeric(permanova_phy$`Pr(>F)`[1])
-}, error = function(e) NA)
+alpha_panel_genome <- cowplot::plot_grid(p_shannon_genome, p_simpson_genome, p_observed_genome, ncol = 3)
+ggsave("10-supplementary-alpha_diversity_genome_TB_status.tiff",
+       plot = alpha_panel_genome,
+       width = 18,
+       height = 6,
+       dpi = 600,
+       device = "tiff",
+       compression = "lzw")
 
-ord_bray_phy <- phyloseq::ordinate(carbom, method = "PCoA", distance = "bray")
-p_bray_phy <- phyloseq::plot_ordination(carbom, ord_bray_phy, color = "Status") +
-  theme_classic() +
-  labs(title = "PCoA (Bray-Curtis)", caption = ifelse(is.na(permanova_p_phy), "", paste0("PERMANOVA p = ", signif(permanova_p_phy, 3))))
+# Beta diversity: main ecological view with NMDS + Bray-Curtis,
+# supplementary compositional view with Aitchison distance + PCA
+carbom_case_control <- subset_samples(carbom, !is.na(Status) & Status %in% c("Case", "Control"))
+carbom_case_control <- prune_taxa(taxa_sums(carbom_case_control) > 0, carbom_case_control)
 
-p_bray_phy
+carbom_genus_case_control <- subset_samples(carbom_genus, !is.na(Status) & Status %in% c("Case", "Control"))
+carbom_genus_case_control <- prune_taxa(taxa_sums(carbom_genus_case_control) > 0, carbom_genus_case_control)
+
+get_sample_metadata <- function(physeq_obj) {
+  meta_df <- as(sample_data(physeq_obj), "data.frame")
+  data.frame(
+    SampleID = rownames(meta_df),
+    Status = meta_df$Status,
+    row.names = rownames(meta_df),
+    check.names = FALSE
+  )
+}
+
+get_sample_matrix <- function(physeq_obj) {
+  otu_mat <- as(otu_table(physeq_obj), "matrix")
+  if (taxa_are_rows(physeq_obj)) {
+    otu_mat <- t(otu_mat)
+  }
+  otu_mat
+}
+
+compute_bray_nmds_result <- function(physeq_obj, level_label) {
+  sample_mat <- get_sample_matrix(physeq_obj)
+  meta_df <- get_sample_metadata(physeq_obj)
+  n_samples <- nrow(sample_mat)
+  n_unique_profiles <- nrow(unique(as.data.frame(sample_mat)))
+
+  bray_dist <- vegan::vegdist(sample_mat, method = "bray")
+  permanova_res <- adonis2(bray_dist ~ meta_df$Status, permutations = 999)
+  permanova_p <- tryCatch(as.numeric(permanova_res$`Pr(>F)`[1]), error = function(e) NA_real_)
+  permanova_r2 <- tryCatch(as.numeric(permanova_res$R2[1]), error = function(e) NA_real_)
+
+  nmds_warning <- NULL
+  nmds_res <- withCallingHandlers(
+    vegan::metaMDS(bray_dist, k = 2, trymax = 100, autotransform = FALSE, trace = FALSE),
+    warning = function(w) {
+      nmds_warning <<- conditionMessage(w)
+      invokeRestart("muffleWarning")
+    }
+  )
+  near_zero_stress <- !is.null(nmds_warning) && grepl("stress is \\(nearly\\) zero", nmds_warning)
+
+  nmds_points <- as.data.frame(nmds_res$points) %>%
+    tibble::rownames_to_column("SampleID") %>%
+    dplyr::rename(NMDS1 = MDS1, NMDS2 = MDS2) %>%
+    left_join(meta_df, by = "SampleID")
+
+  nmds_caption_extra <- if (near_zero_stress) {
+    " Note: NMDS stress is nearly zero, which often reflects limited or very simple distance structure; interpret the ordination cautiously."
+  } else {
+    ""
+  }
+
+  ord_plot <- ggplot(nmds_points, aes(x = NMDS1, y = NMDS2, color = Status)) +
+    geom_point(size = 3, alpha = 0.9) +
+    theme_classic() +
+    labs(
+      title = paste(level_label, "Level Beta Diversity (NMDS Bray-Curtis)"),
+      x = "NMDS1",
+      y = "NMDS2",
+      caption = paste0(
+        "n = ", n_samples,
+        "; unique profiles = ", n_unique_profiles,
+        ". ",
+        "Ordination stress = ", signif(nmds_res$stress, 3),
+        ". PERMANOVA (Bray-Curtis): p = ", ifelse(is.na(permanova_p), "NA", signif(permanova_p, 3)),
+        "; R2 = ", ifelse(is.na(permanova_r2), "NA", signif(permanova_r2, 3)),
+        ".",
+        nmds_caption_extra
+      )
+    )
+
+  interp <- if (is.na(permanova_p)) {
+    paste0(level_label, "-level Bray-Curtis PERMANOVA could not be evaluated.")
+  } else if (permanova_p < 0.05) {
+    paste0(
+      level_label,
+      "-level Bray-Curtis PERMANOVA was significant (p=",
+      signif(permanova_p, 3),
+      ", R2=",
+      signif(permanova_r2, 3),
+      "), indicating an overall ecological community-composition difference between Case and Control samples. ",
+      "The NMDS plot is an ordination display of that distance structure and should be interpreted visually as supportive rather than as the significance test itself.",
+      if (near_zero_stress) paste0(" NMDS stress was nearly zero, suggesting the distance structure is very simple or the dataset is limited (n=", n_samples, ", unique profiles=", n_unique_profiles, "), so the ordination may appear cleaner than the underlying evidence warrants.") else ""
+    )
+  } else {
+    paste0(
+      level_label,
+      "-level Bray-Curtis PERMANOVA was not significant (p=",
+      signif(permanova_p, 3),
+      ", R2=",
+      signif(permanova_r2, 3),
+      "), suggesting no strong overall ecological community-composition separation between Case and Control samples. ",
+      "The NMDS plot is still useful for visualization, but apparent visual spacing should not be over-interpreted without PERMANOVA support.",
+      if (near_zero_stress) paste0(" NMDS stress was nearly zero, which often happens when there are few samples or very simple distance relationships (n=", n_samples, ", unique profiles=", n_unique_profiles, "), so interpret the ordination cautiously.") else ""
+    )
+  }
+
+  stats_tbl <- tibble(
+    level = level_label,
+    analysis = "Main",
+    distance = "Bray-Curtis",
+    ordination = "NMDS",
+    p = permanova_p,
+    r2 = permanova_r2,
+    stress = nmds_res$stress,
+    n_samples = n_samples,
+    n_unique_profiles = n_unique_profiles,
+    ordination_note = ifelse(near_zero_stress, "NMDS stress nearly zero; ordination may be overfit or based on very simple structure", NA_character_)
+  )
+
+  list(plot = ord_plot, stats = stats_tbl, interp = interp)
+}
+
+compute_aitchison_pca_result <- function(physeq_obj, level_label, pseudocount = 1) {
+  sample_mat <- get_sample_matrix(physeq_obj)
+  meta_df <- get_sample_metadata(physeq_obj)
+
+  clr_mat <- log(sample_mat + pseudocount)
+  clr_mat <- sweep(clr_mat, 1, rowMeans(clr_mat), FUN = "-")
+
+  aitchison_dist <- dist(clr_mat, method = "euclidean")
+  permanova_res <- adonis2(aitchison_dist ~ meta_df$Status, permutations = 999)
+  permanova_p <- tryCatch(as.numeric(permanova_res$`Pr(>F)`[1]), error = function(e) NA_real_)
+  permanova_r2 <- tryCatch(as.numeric(permanova_res$R2[1]), error = function(e) NA_real_)
+
+  pca_res <- prcomp(clr_mat, center = TRUE, scale. = FALSE)
+  var_explained <- (pca_res$sdev^2) / sum(pca_res$sdev^2)
+  pca_points <- as.data.frame(pca_res$x[, 1:2, drop = FALSE]) %>%
+    tibble::rownames_to_column("SampleID") %>%
+    dplyr::rename(PC1 = PC1, PC2 = PC2) %>%
+    left_join(meta_df, by = "SampleID")
+
+  ord_plot <- ggplot(pca_points, aes(x = PC1, y = PC2, color = Status)) +
+    geom_point(size = 3, alpha = 0.9) +
+    theme_classic() +
+    labs(
+      title = paste(level_label, "Level Beta Diversity (Aitchison PCA)"),
+      x = paste0("PC1 (", scales::percent(var_explained[1], accuracy = 0.1), ")"),
+      y = paste0("PC2 (", scales::percent(var_explained[2], accuracy = 0.1), ")"),
+      caption = paste0(
+        "Aitchison PERMANOVA: p = ", ifelse(is.na(permanova_p), "NA", signif(permanova_p, 3)),
+        "; R2 = ", ifelse(is.na(permanova_r2), "NA", signif(permanova_r2, 3))
+      )
+    )
+
+  interp <- if (is.na(permanova_p)) {
+    paste0(level_label, "-level Aitchison PERMANOVA could not be evaluated.")
+  } else if (permanova_p < 0.05) {
+    paste0(
+      level_label,
+      "-level Aitchison PERMANOVA was significant (p=",
+      signif(permanova_p, 3),
+      ", R2=",
+      signif(permanova_r2, 3),
+      "), indicating a compositional difference between Case and Control samples after CLR-based analysis. ",
+      "The PCA plot summarizes the dominant compositional gradients, but the PERMANOVA provides the formal group comparison."
+    )
+  } else {
+    paste0(
+      level_label,
+      "-level Aitchison PERMANOVA was not significant (p=",
+      signif(permanova_p, 3),
+      ", R2=",
+      signif(permanova_r2, 3),
+      "), suggesting no strong compositional separation between Case and Control samples under the CLR/Aitchison framework. ",
+      "The PCA plot should be interpreted descriptively rather than as proof of group differences."
+    )
+  }
+
+  stats_tbl <- tibble(
+    level = level_label,
+    analysis = "Supplementary",
+    distance = "Aitchison",
+    ordination = "PCA",
+    p = permanova_p,
+    r2 = permanova_r2,
+    stress = NA_real_
+  )
+
+  list(plot = ord_plot, stats = stats_tbl, interp = interp)
+}
+
+beta_main_res <- compute_bray_nmds_result(carbom_genus_case_control, "Genus")
+beta_supp_res <- compute_aitchison_pca_result(carbom_genus_case_control, "Genus")
+
+beta_stats <- bind_rows(beta_main_res$stats, beta_supp_res$stats)
+write.table(beta_stats, file = "11-beta_diversity_stats.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
+
+beta_interp <- paste(
+  "Main analysis:",
+  beta_main_res$interp,
+  "Supplementary analysis:",
+  beta_supp_res$interp
+)
+writeLines(beta_interp, con = "11-beta_diversity_interpretation.txt")
+cat(beta_interp, "\n")
+
+beta_panel_main <- cowplot::plot_grid(
+  beta_main_res$plot,
+  beta_supp_res$plot,
+  ncol = 2,
+  labels = c("Main: Genus-Level NMDS Bray-Curtis", "Supplementary: Genus-Level Aitchison PCA")
+)
+
+ggsave("11-beta_diversity_main_and_supplementary.tiff",
+       plot = beta_panel_main,
+       width = 16,
+       height = 7,
+       dpi = 600,
+       device = "tiff",
+       compression = "lzw")
+
+ggsave("11-beta_diversity_genus_TB_status.tiff",
+       plot = beta_main_res$plot,
+       width = 8,
+       height = 6,
+       dpi = 600,
+       device = "tiff",
+       compression = "lzw")
+
+ggsave("11-supplementary-beta_diversity_aitchison_genus_TB_status.tiff",
+       plot = beta_supp_res$plot,
+       width = 8,
+       height = 6,
+       dpi = 600,
+       device = "tiff",
+       compression = "lzw")
 
 ### Abundance of MTB species between the two groups
 prokaryote.sylph %>% 
@@ -925,358 +1233,55 @@ prokaryote.sylph %>%
   #  theme(axis.text.x = element_blank(), axis.title.x = element_blank()) + # x axis blank
   labs(title = "Taxonomic composition by TB status") +   ylab("Abundance (%)") 
 
+# #######################################################
+# ###########  ANCOMBC - DIFFERENTIAL ABUNDANCE ########
+# # ANCOM-BC corrects for compositional bias in microbiome data
+# ######################################################
+# # #Very important for permission issues when installing
+# # unlink("C:/Users/Administrator.DESKTOP-7PUVTGC/AppData/Local/R/win-library/4.5/00LOCK", recursive = TRUE)
 
-###########################################################################################
-#############################Statistical testing at genus level############################
-##########################################################################################
-install.packages("rstatix", lib = "C:/Program Files/R/R-4.5.2/library")
-library(ggplot2)
-library(dplyr)
-library(tidyr)
-library(forcats)
-library(rstatix)
+# # install.packages("Matrix")
+# # install.packages("Rcpp")
+# # library(devtools)
+# # install_github("biobakery/Maaslin2")
+# # remove.packages(c("ANCOMBC", "CVXR"))
 
-# ===============================
-# 1. Data Preparation
-# ===============================
+# # # 1. Define your library path
+# # lib_path <- .libPaths()[1]
 
-plot_data <- prokaryote.sylph %>% 
-  filter(sample != "CAGE4481") %>% 
-  separate(clade_name, 
-           into = c("Kingdom","Phylum","Class","Order",
-                    "Family","Genus","Species","Strain"), 
-           sep = "\\|", fill = "right", remove = FALSE) %>%
-  filter(is.na(Species), is.na(Strain), !is.na(Genus)) %>%
-  
-  # Identify top 15 genera globally
-  group_by(Genus) %>%
-  mutate(total_global = sum(Abundance, na.rm = TRUE)) %>%
-  ungroup() %>%
-  mutate(
-    Genus = if_else(
-      Genus %in% names(sort(tapply(total_global, Genus, sum), decreasing = TRUE))[1:15],
-      Genus,
-      "Other"
-    )
-  ) %>%
-  
-  group_by(sample, Genus) %>%
-  summarise(Abundance = sum(Abundance), .groups = "drop") %>%
-  left_join(metadata, by = c("sample"="SampleID"))
+# # # 2. Force remove the stuck '00LOCK' folder
+# # # The error shows it is likely named '00LOCK-CVXR' or just '00LOCK'
+# # lock_dir <- file.path(lib_path, "00LOCK-CVXR")
+# # unlink(lock_dir, recursive = TRUE, force = TRUE)
 
-# ===============================
-# 2. Statistical Testing at Genus Level
-# ===============================
+# # # Also check for generic lock
+# # unlink(file.path(lib_path, "00LOCK"), recursive = TRUE, force = TRUE)
 
-genus_stats <- plot_data %>%
-  group_by(Genus) %>%
-  kruskal_test(Abundance ~ Status) %>%
-  adjust_pvalue(method = "BH") %>%
-  arrange(p.adj)
-
-genus_stats
-
-sig_genera <- genus_stats %>%
-  filter(p.adj < 0.05) %>%
-  pull(Genus)
-
-plot_data <- plot_data %>%
-  group_by(Status, sample) %>%
-  mutate(sample_total = sum(Abundance, na.rm = TRUE)) %>%
-  ungroup() %>%
-  mutate(sample = fct_reorder(sample, sample_total))
-
-p <- ggplot(plot_data, aes(x = sample, y = Abundance, fill = Genus)) + 
-  geom_bar(stat = "identity", position = "fill") +
-  coord_flip() +
-  theme_classic(base_size = 12) +
-  scale_y_continuous(expand = c(0, 0)) +
-  scale_fill_manual(values = cb_palette) +
-  facet_wrap(~Status, scales = "free_y", ncol = 2) +
-  theme(axis.text.y = element_text(size = 5),
-        strip.text = element_text(face = "bold")) +
-  labs(title = "Top 15 Genus-level taxonomic composition by TB status",
-       x = "Sample",
-       y = "Relative Abundance")
-
-p
-
-####################################################
-####################################################
-################### MICROVIZ #######################
-###################################################
-###################################################
-library(dplyr)
-library(phyloseq)
-library(microViz)
-
-example_ps <- phyloseq_validate(carbom, remove_undetected = TRUE)
-example_ps <- tax_fix(example_ps)
-example_ps
-samdat_tbl(example_ps)
-
-partial_ps <- example_ps %>%
-  ps_filter(
-    Status == "Case",
-    Study_site == 9
-  )
-partial_ps
-
-partial_ps %>%
-  tax_agg("Genus") %>%
-  ps_seriate(dist = "bray", method = "OLO_ward") %>% # these are the defaults
-  comp_barplot(tax_level = "Genus", sample_order = "asis", n_taxa = 10)
-
-
-################################################
-#PCA visuals
-example_ps %>%
-  tax_transform(trans = "identity", rank = "Genus") %>%
-  dist_calc("bray") # bray curtis distance
-
-example_ps %>%
-  tax_transform(trans = "clr", rank = "Genus") %>%
-  # when no distance matrix or constraints are supplied, request PCA explicitly
-  ord_calc("PCA") %>%
-  ord_plot(color = "Status", shape = "Study_site", plot_taxa = 1:5, size = 2) +
-  scale_colour_brewer(palette = "Dark2")
-example_ps
-
-example_ps %>%
-  tax_transform("clr", rank = "Genus") %>%
-  # when no distance matrix or constraints are supplied, PCA is the default/auto ordination method
-  ord_calc() %>%
-  ord_plot_iris(tax_level = "Genus", ord_plot = "above", anno_colour = "Status")
-
-#######################################################
-#######################################################
-####### ####   MIAVERSE CODE ##########################
-BiocManager::install("TreeSummarizedExperiment")
-library(phyloseq)
-library(mia)
-library(miaViz)
-library(microbiome)
-library(ggplot2)
-library("TreeSummarizedExperiment")
-
-tse <- makeTreeSummarizedExperimentFromPhyloseq(carbom)
-
-# Calculate alpha diversity
-tse <- addAlpha(
-  tse,
-  assay.type = "counts",
-  index = c("shannon", "simpson", "observed")
-)
-
-# Extract results
-alpha_df <- as.data.frame(colData(tse))
-
-# Statistical testing for alpha diversity metrics (pairwise Wilcoxon by default)
-alpha_long <- alpha_df %>%
-  dplyr::select(Status, shannon, simpson, observed) %>%
-  tidyr::pivot_longer(cols = c(shannon, simpson, observed),
-                      names_to = "metric", values_to = "value")
-
-alpha_stats <- alpha_long %>%
-  group_by(metric) %>%
-  wilcox_test(value ~ Status) %>%
-  adjust_pvalue(method = "BH") %>%
-  add_significance()
-
-# Create boxplots for each metric and annotate p-values
-p_shannon <- ggplot(alpha_df, aes(x = Status, y = shannon, fill = Status)) +
-  geom_boxplot() +
-  stat_compare_means(method = "wilcox.test", label = "p.format") +
-  theme_classic() +
-  labs(x = "Group", y = "Shannon Diversity", title = "Alpha Diversity (Shannon)")
-
-p_simpson <- ggplot(alpha_df, aes(x = Status, y = simpson, fill = Status)) +
-  geom_boxplot() +
-  stat_compare_means(method = "wilcox.test", label = "p.format") +
-  theme_classic() +
-  labs(x = "Group", y = "Simpson Diversity", title = "Alpha Diversity (Simpson)")
-
-p_observed <- ggplot(alpha_df, aes(x = Status, y = observed, fill = Status)) +
-  geom_boxplot() +
-  stat_compare_means(method = "wilcox.test", label = "p.format") +
-  theme_classic() +
-  labs(x = "Group", y = "Observed richness", title = "Alpha Diversity (Observed)")
-
-# Combine alpha plots
-library(patchwork)
-alpha_panel <- (p_shannon | p_simpson) / p_observed
-alpha_panel
-
-# Calculate beta diversity
-tse_rel <- transformAssay(
-  tse,
-  method = "relabundance"
-)
-
-# create logcounts
-assay(tse_rel, "logcounts") <- log1p(assay(tse_rel, "relabundance"))
-
-# Ordination PCoA
-tse_rel <- runMDS(
-  tse_rel,
-  FUN = vegan::vegdist,
-  method = "bray",
-  assay.type = "logcounts"
-)
-
-#### extract ordinates
-ord_name <- reducedDimNames(tse_rel)[1]
-ord <- reducedDim(tse_rel, ord_name)
-
-plot_df <- data.frame(
-  PC1 = ord[,1],
-  PC2 = ord[,2],
-  TB_status = colData(tse_rel)$Status
-)
-
-#### PCoA Beta Diversity Plots ##########
-ggplot(plot_df, aes(PC1, PC2, color = TB_status)) +
-  geom_point(size = 1.5) +
-  theme_classic() + 
-  labs(
-    title = "PCoA (Bray-Curtis)",
-    x = "PC1",
-    y = "PC2"
-  )
-
-## annotate with PERMANOVA p-value from `permanova_res` if available
-permanova_p2 <- tryCatch({
-  if(exists("permanova_res")){
-    as.numeric(permanova_res$`Pr(>F)`[1])
-  } else NA
-}, error = function(e) NA)
-
-if(!is.na(permanova_p2)){
-  p_beta <- ggplot(plot_df, aes(PC1, PC2, color = TB_status)) +
-    geom_point(size = 1.5) +
-    theme_classic() +
-    labs(title = "PCoA (Bray-Curtis)", x = "PC1", y = "PC2", caption = paste0("PERMANOVA p = ", signif(permanova_p2, 3)))
-  print(p_beta)
-}
-
-
-##### PERMANOVA Stats ################
-
-library(mia)
-library(vegan)
-library(ggplot2)
-
-# Calculate beta diversity
-tse_rel <- transformCounts(
-  tse,
-  method = "relabundance"
-)
-
-# create logcounts
-assay(tse_rel, "logcounts") <- log1p(assay(tse_rel, "relabundance"))
-
-# Ordination PCoA
-tse_rel <- runMDS(
-  tse_rel,
-  FUN = vegan::vegdist,
-  method = "bray",
-  assay.type = "logcounts",
-  FUN.args = list(method = "bray")
-)
-
-#### extract ordinates
-ord_name <- reducedDimNames(tse_rel)[1]
-ord <- reducedDim(tse_rel, ord_name)
-
-plot_df <- data.frame(
-  PC1 = ord[,1],
-  PC2 = ord[,2],
-  TB_status = colData(tse_rel)$Status
-)
-
-#### PCoA Beta Diversity Plots ##########
-ggplot(plot_df, aes(PC1, PC2, color = TB_status)) +
-  geom_point(size = 1.5) +
-  theme_classic() + 
-  labs(
-    title = "PCoA (Bray-Curtis)",
-    x = "PC1",
-    y = "PC2"
-  )
-
-############################
-#### PERMANOVA TEST ########
-############################
-
-# Bray-Curtis distance matrix
-dist_mat <- vegdist(
-  t(assay(tse_rel, "relabundance")),
-  method = "bray"
-)
-
-# metadata
-meta <- as.data.frame(colData(tse_rel))
-
-# PERMANOVA
-permanova_res <- adonis2(
-  dist_mat ~ Status,
-  data = meta,
-  permutations = 999
-)
-
-print(permanova_res)
-
-
-#######################################################
-###########  ANCOMBC - DIFFERENTIAL ABUNDANCE ########
-# ANCOM-BC corrects for compositional bias in microbiome data
-######################################################
-#Very important for permission issues when installing
-unlink("C:/Users/Administrator.DESKTOP-7PUVTGC/AppData/Local/R/win-library/4.5/00LOCK", recursive = TRUE)
-
-install.packages("Matrix")
-install.packages("Rcpp")
-library(devtools)
-install_github("biobakery/Maaslin2")
-remove.packages(c("ANCOMBC", "CVXR"))
-
-# 1. Define your library path
-lib_path <- .libPaths()[1]
-
-# 2. Force remove the stuck '00LOCK' folder
-# The error shows it is likely named '00LOCK-CVXR' or just '00LOCK'
-lock_dir <- file.path(lib_path, "00LOCK-CVXR")
-unlink(lock_dir, recursive = TRUE, force = TRUE)
-
-# Also check for generic lock
-unlink(file.path(lib_path, "00LOCK"), recursive = TRUE, force = TRUE)
-
-# 3. Install the specific working version (1.0-15) with NO LOCK check
-# This bypasses the rename error
-remotes::install_version("CVXR", 
-                         version = "1.0-15", 
-                         repos = "http://cran.us.r-project.org",
-                         INSTALL_opts = '--no-lock')
-install_github("FrederickHuangLin/ANCOMBC")
+# # # 3. Install the specific working version (1.0-15) with NO LOCK check
+# # # This bypasses the rename error
+# # remotes::install_version("CVXR", 
+# #                          version = "1.0-15", 
+# #                          repos = "http://cran.us.r-project.org",
+# #                          INSTALL_opts = '--no-lock')
+# # install_github("FrederickHuangLin/ANCOMBC")
 library(phyloseq)
 library(ANCOMBC)
 library(Maaslin2)
 library(SIAMCAT)
 library(ggplot2)
-
-
 ### Prepare AMCOMBC data - remove samples with missing data
+library(ANCOMBC)
 carbom <- subset_samples(carbom, !is.na(Status))
 carbom <- prune_taxa(taxa_sums(carbom) > 0, carbom)
 
 output = ancombc2(data = carbom, tax_level = "Genus",
                   fix_formula = "Status", rand_formula = NULL,
                   p_adj_method = "holm", pseudo_sens = TRUE,
-                  prv_cut = 0.010, lib_cut = 0, s0_perc = 0.05,
+                  prv_cut = 0.10, lib_cut = 0, s0_perc = 0.05,
                   group = "Status", struc_zero = TRUE, neg_lb = TRUE,
                   alpha = 0.1, n_cl = 1, verbose = TRUE,
                   global = FALSE, pairwise = FALSE, dunnet = FALSE, trend = FALSE,
-                  iter_control = list(tol = 1e-2, max_iter = 20, 
+                  iter_control = list(tol = 1e-2, max_iter = 20,
                                       verbose = TRUE),
                   em_control = list(tol = 1e-5, max_iter = 100),
                   lme_control = lme4::lmerControl(),
@@ -1309,11 +1314,11 @@ ancom_sig <- subset(ancom_table, significant == TRUE)
 
 ancom_sig
 
-#### interpret direction (TB enriched vs Control enriched)
-#### Because the model is Control vs Case:
-#### positive logFC → higher in Control; negative logFC → higher in TB (Case)
+# #### interpret direction (TB enriched vs Control enriched)
+# #### Because the model is Control vs Case:
+# #### positive logFC → higher in Control; negative logFC → higher in TB (Case)
 
-# Therefore, enrich genera are: g__Dolosigranulum, g__Staphylococcus, g__Eggerthia, g__Desulfobulbus, g__Catonella, g__Leptotrichia_A (+logFC and TRUE for controls)
+# # Therefore, enrich genera are: g__Dolosigranulum, g__Staphylococcus, g__Eggerthia, g__Desulfobulbus, g__Catonella, g__Leptotrichia_A (+logFC and TRUE for controls)
 
 ############ Visuals
 library(ggplot2)
@@ -1344,7 +1349,7 @@ ggplot(volcano_df, aes(x = logFC, y = -log10(qvalue))) +
 # Save ANCOM-BC results and volcano plot
 try({
   write.table(output$res, file = "ancombc_results.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
-  ggsave(filename = "ancombc_volcano.tiff", plot = last_plot(), device = "tiff", dpi = 600, width = 8, height = 6, compression = "lzw")
+  ggsave(filename = "12-ancombc_volcano.tiff", plot = last_plot(), device = "tiff", dpi = 600, width = 8, height = 6, compression = "lzw")
 }, silent = TRUE)
 
 ## Forest plot of significant taxa
@@ -1373,15 +1378,125 @@ ggplot(sig_df, aes(x = logFC, y = reorder(taxa, logFC))) +
   geom_vline(xintercept = 0, linetype="dashed")
 
 try({
-  ggsave(filename = "ancombc_forest.tiff", plot = last_plot(), device = "tiff", dpi = 600, width = 7, height = 8, compression = "lzw")
+  ggsave(filename = "12-ancombc_forest.tiff", plot = last_plot(), device = "tiff", dpi = 600, width = 8, height = 6, compression = "lzw")
 }, silent = TRUE)
 
+#### Transform to genus-level
+# Agglomerate to genus level
+carbom_genus <- tax_glom(carbom, taxrank = "Genus")
+# Remove taxa without genus annotation
+carbom_genus <- subset_taxa(carbom_genus, !is.na(Genus))
+
+#### Beta diversity + PERMANOVA
+library(vegan)
+# Extract OTU table
+otu <- as.data.frame(otu_table(carbom_genus))
+if(taxa_are_rows(carbom_genus)) otu <- t(otu)
+# Bray-Curtis distance
+bray_dist <- vegdist(otu, method = "bray")
+# PERMANOVA
+meta <- data.frame(sample_data(carbom_genus))
+adonis_res <- adonis2(bray_dist ~ Status, data = meta)
+adonis_res
+
+##### Identify taxa driving differences (SIMPER)
+simper_res <- simper(otu, meta$Status)
+# Extract Case vs Control comparison
+simper_summary <- summary(simper_res)[[1]]
+# Convert to dataframe
+simper_df <- as.data.frame(simper_summary)
+# Add genus names
+simper_df$Genus <- rownames(simper_df)
+# Top drivers
+top_simper <- simper_df %>%
+  arrange(desc(average)) %>%
+  head(20)
+top_simper
+
+
+#### Differential abundance (DESeq2 validation)
+#BiocManager::install("DESeq2")
+library(phyloseq)
+library(DESeq2)
+library(dplyr)
+library(tibble)
+
+# Make sure Status is a factor and set reference level
+sample_data(carbom_genus)$Status <- factor(sample_data(carbom_genus)$Status)
+sample_data(carbom_genus)$Status <- relevel(sample_data(carbom_genus)$Status, ref = "Control")
+
+# Optional but recommended: remove very sparse / low-count taxa first
+carbom_deseq <- prune_taxa(taxa_sums(carbom_genus) > 10, carbom_genus)
+
+# Build DESeq2 object
+dds <- phyloseq_to_deseq2(carbom_deseq, ~ Status)
+
+# Fix zero-heavy microbiome count data
+dds <- estimateSizeFactors(dds, type = "poscounts")
+
+# Run DESeq2
+dds <- DESeq(dds, sfType = "poscounts")
+
+# Extract results
+# Here, positive log2FoldChange = enriched in Case/TB
+# negative log2FoldChange = enriched in Control
+res <- results(dds, contrast = c("Status", "Case", "Control"))
+
+# Convert results to data frame and keep taxon IDs
+res_df <- as.data.frame(res) %>%
+  rownames_to_column("TaxonID")
+
+# Extract taxonomy from the SAME filtered phyloseq object used for DESeq2
+tax_df <- as.data.frame(tax_table(carbom_deseq)) %>%
+  rownames_to_column("TaxonID")
+
+# Add Genus annotation
+res_df <- res_df %>%
+  left_join(tax_df %>% select(TaxonID, Genus), by = "TaxonID")
+
+# Optional: classify direction
+res_df <- res_df %>%
+  mutate(
+    direction = case_when(
+      log2FoldChange > 0 ~ "Case_enriched",
+      log2FoldChange < 0 ~ "Control_enriched",
+      TRUE ~ "No_change"
+    )
+  )
+
+# View results
+head(res_df)
+
+# Significant taxa
+sig_res <- res_df %>%
+  filter(!is.na(padj), padj < 0.05) %>%
+  arrange(padj)
+
+sig_res
+
+# Save results
+write.table(
+  res_df,
+  file = "deseq2_results_with_genus.tsv",
+  sep = "\t",
+  row.names = FALSE,
+  quote = FALSE
+)
+
+write.table(
+  sig_res,
+  file = "deseq2_significant_results.tsv",
+  sep = "\t",
+  row.names = FALSE,
+  quote = FALSE
+)
 
 
 #######################################################
 #### Covariate-adjusted differential abundance (MaAsLin2)
-## MaAsLin2 allows adjustment for confounders such as age, sex, HIV status, BMI.
+## MaAsLin2 allows adjustment for confounders such as age, sex, HIV status
 ######################################################
+
 library(Maaslin2)
 
 # OTU table
@@ -1393,16 +1508,13 @@ otu <- as.data.frame(otu)
 
 # Metadata
 meta <- data.frame(sample_data(carbom), check.names = FALSE)
-
 meta <- meta[, c("Status","Age","Sex","Study_site","HIV_status")]
 
 meta$Status <- factor(meta$Status)
 meta$Sex <- factor(meta$Sex)
 meta$Study_site <- factor(meta$Study_site)
 meta$HIV_status <- factor(meta$HIV_status)
-
 meta$Age <- as.numeric(meta$Age)
-
 meta <- meta[rownames(otu), ]
 
 # Run MaAsLin2
@@ -1517,3 +1629,4 @@ try({
 try({
   source("generate_report.R")
 }, silent = TRUE)
+
